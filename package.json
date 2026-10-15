@@ -1,1 +1,30 @@
-{"author":"nordicnode","description":"Unofficial Linux desktop app for Muse (muse.ai). An Electron shell modelled on the macOS Muse 7.0 app: persistent login, tray, downloads, deep links, find-in-page.","devDependencies":{"@electron/packager":"^18.0.0","electron":"^33.0.0"},"homepage":"https://github.com/nordicnode/muse-linux","keywords":["muse","meta","ai","electron","linux","desktop"],"license":"MIT","main":"src/main.js","name":"muse-linux","productName":"Muse","repository":{"type":"git","url":"https://github.com/nordicnode/muse-linux.git"},"scripts":{"package":"electron-packager . Muse --platform=linux --arch=x64 --out=dist --overwrite --icon=src/icon.png --prune=true --ignore=\"dist|Muse-linux-x64.zip|screenshot-verified.png\"","start":"electron ."},"version":"1.0.0"}
+{
+  "author": "nordicnode",
+  "description": "Unofficial Linux desktop app for Muse (muse.ai). An Electron shell modelled on the macOS Muse 7.0 app: persistent login, tray, downloads, deep links, find-in-page.",
+  "devDependencies": {
+    "@electron/packager": "^18.0.0",
+    "electron": "^33.0.0"
+  },
+  "homepage": "https://github.com/nordicnode/muse-linux",
+  "keywords": [
+    "muse",
+    "meta",
+    "ai",
+    "electron",
+    "linux",
+    "desktop"
+  ],
+  "license": "MIT",
+  "main": "src/main.js",
+  "name": "muse-linux",
+  "productName": "Muse",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nordicnode/muse-linux.git"
+  },
+  "scripts": {
+    "package": "electron-packager . Muse --platform=linux --arch=x64 --out=dist --overwrite --icon=src/icon.png --prune=true --ignore=\"dist|Muse-linux-x64.zip|screenshot-verified.png\"",
+    "start": "electron ."
+  },
+  "version": "1.0.1"
+}

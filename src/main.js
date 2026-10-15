@@ -383,11 +383,31 @@ function buildTray() {
 
 // Deep links: the Mac app registers hatch:// and endo-window://.
 // Register the same schemes here so links keep working on Linux.
-for (const scheme of ['hatch', 'endo-window', 'muse']) {
-  try {
-    app.setAsDefaultProtocolClient(scheme);
-  } catch {
-    /* best effort */
+//
+// Linux caveat (fixed in 1.0.1): Electron implements this by shelling
+// out to xdg-mime once per scheme. With no .desktop entry installed
+// for the app, xdg-mime fails noisily on every launch
+// ("qtpaths: command not found" / "application argument missing",
+// one block per scheme) and registers nothing anyway. So on Linux
+// we only attempt it when a desktop entry exists; install.sh
+// registers the schemes properly via xdg-mime when it installs one.
+function hasDesktopEntry() {
+  const dirs = [];
+  if (process.env.XDG_DATA_HOME) dirs.push(process.env.XDG_DATA_HOME);
+  if (process.env.HOME) dirs.push(path.join(process.env.HOME, '.local', 'share'));
+  if (process.env.XDG_DATA_DIRS) dirs.push(...process.env.XDG_DATA_DIRS.split(':').filter(Boolean));
+  dirs.push('/usr/local/share', '/usr/share');
+  return dirs.some((d) =>
+    ['muse.desktop', 'Muse.desktop'].some((f) => fs.existsSync(path.join(d, 'applications', f))),
+  );
+}
+if (process.platform !== 'linux' || hasDesktopEntry()) {
+  for (const scheme of ['hatch', 'endo-window', 'muse']) {
+    try {
+      app.setAsDefaultProtocolClient(scheme);
+    } catch {
+      /* best effort */
+    }
   }
 }
 
