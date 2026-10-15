@@ -3,7 +3,8 @@
   "description": "Unofficial Linux desktop app for Muse (muse.ai). An Electron shell modelled on the macOS Muse 7.0 app: persistent login, tray, downloads, deep links, find-in-page.",
   "devDependencies": {
     "@electron/packager": "^18.0.0",
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
   },
   "homepage": "https://github.com/nordicnode/muse-linux",
   "keywords": [
@@ -23,8 +24,40 @@
     "url": "https://github.com/nordicnode/muse-linux.git"
   },
   "scripts": {
-    "package": "electron-packager . Muse --platform=linux --arch=x64 --out=dist --overwrite --icon=src/icon.png --prune=true --ignore=\"dist|Muse-linux-x64.zip|screenshot-verified.png\"",
-    "start": "electron ."
+    "package": "electron-packager . Muse --platform=linux --arch=x64 --out=dist-packager --overwrite --icon=src/icon.png --prune=true --ignore=\"dist|dist-packager|Muse-linux-x64.zip|screenshot-verified.png\"",
+    "start": "electron .",
+    "dist": "electron-builder --linux AppImage deb --publish never"
   },
-  "version": "1.0.1"
+  "version": "1.1.0",
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "build": {
+    "appId": "io.github.nordicnode.muse-linux",
+    "productName": "Muse",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Productivity",
+      "maintainer": "nordicnode",
+      "synopsis": "Unofficial Linux desktop app for Muse",
+      "description": "An Electron shell for muse.ai: persistent login, system tray, find-in-page, downloads and deep links. Unofficial; not affiliated with Meta.",
+      "desktop": {
+        "StartupWMClass": "Muse",
+        "MimeType": "x-scheme-handler/hatch;x-scheme-handler/endo-window;x-scheme-handler/muse;"
+      }
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "nordicnode",
+      "repo": "muse-linux"
+    }
+  }
 }

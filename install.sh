@@ -26,7 +26,7 @@ cat > "$HOME/.local/share/applications/muse.desktop" <<EOF
 [Desktop Entry]
 Name=Muse
 Comment=Muse - personal AI assistant (unofficial Linux port)
-Exec=$DEST/Muse %U
+Exec=$DEST/Muse --ozone-platform-hint=auto %U
 Icon=muse
 Terminal=false
 Type=Application

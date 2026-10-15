@@ -1,6 +1,9 @@
 node_modules/
 dist/
+dist-packager/
 *.zip
+*.AppImage
+*.deb
 *.log
 .DS_Store
 window-state.json

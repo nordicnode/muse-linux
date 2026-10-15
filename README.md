@@ -16,20 +16,36 @@ This is an unofficial Linux desktop app: an Electron shell for
 
 ## Install
 
-Grab `Muse-linux-x64.zip` from
-[Releases](https://github.com/nordicnode/muse-linux/releases):
+From [Releases](https://github.com/nordicnode/muse-linux/releases),
+pick whichever format you like (x64 and arm64 where applicable):
+
+**AppImage** (recommended, no install):
+
+```sh
+chmod +x Muse-*.AppImage
+./Muse-*.AppImage
+```
+
+**Debian/Ubuntu package:**
+
+```sh
+sudo apt install ./muse-linux_*_amd64.deb   # or *_arm64.deb
+```
+
+**Zip folder:**
 
 ```sh
 unzip Muse-linux-x64.zip
 ./Muse-linux-x64/Muse
 ```
 
-Optional: menu entry, icon and deep-link registration:
+For the zip, `./install.sh` optionally adds a menu entry, icon and
+deep-link registration (and `./uninstall.sh` removes them).
 
-```sh
-./install.sh        # installs to ~/.local/share/muse-linux
-./uninstall.sh      # removes it again
-```
+AppImage and .deb installs **auto-update** from GitHub Releases
+(quiet background check on launch; *Muse -> Check for Updates...*
+checks immediately). The zip build is manual: that menu item opens
+the Releases page.
 
 Verify downloads against `SHA256SUMS` attached to each release.
 
@@ -39,10 +55,13 @@ Verify downloads against `SHA256SUMS` attached to each release.
 - Everything account/server-side works as on Mac and web: chats,
   the agent VM, files, connectors. The VM is bound to your
   account, not to any specific client
-- System tray (closing the window keeps Muse in the tray)
+- System tray (closing the window keeps Muse in the tray, with
+  your place in the conversation intact; can be switched off)
 - Right-click context menu with spellcheck suggestions
 - Find in page (Ctrl+F) with match counts
-- Window size and position remembered between launches
+- Friendly offline page with retry when muse.ai cannot be reached
+- Window size and position remembered between launches, and kept
+  on a connected display if your monitor setup changes
 - Downloads ask where to save, then reveal the file
 - Muse/Meta hosts (login, accounts, auth) stay in-app; external
   links open in your default browser
@@ -57,15 +76,16 @@ Verify downloads against `SHA256SUMS` attached to each release.
   Photos, Speech Recognition, Keychain): macOS-only
 - No native-bridge features for the device you are sitting at
   (host computer use, host local connectors, 1Password hookup)
-- No auto-update: use *Muse -> Check for Updates...* (it opens
-  the Releases page) and download new builds manually
+- No Sparkle-style update feed from Meta; this port updates
+  itself from its own GitHub Releases (AppImage/.deb), see Install
 
 ## Build from source
 
 ```sh
 npm install
 npm start           # run in dev mode
-npm run package     # builds dist/Muse-linux-x64
+npm run package     # zip layout via electron-packager (dist-packager/)
+npm run dist        # AppImage + .deb via electron-builder (dist/)
 ```
 
 ## Privacy

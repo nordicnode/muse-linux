@@ -22,9 +22,16 @@
 // equivalents are used where they exist (getUserMedia for mic/camera,
 // the Chromium file picker for files, web notifications).
 
-const { app, BrowserWindow, Menu, Tray, shell, session, dialog, nativeImage, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, Tray, shell, session, dialog, nativeImage, ipcMain, screen } = require('electron');
 const fs = require('fs');
 const path = require('path');
+
+// Wayland: prefer a native Wayland window over XWayland when the
+// session is Wayland (the hint is a no-op on X11). Must be set
+// before the app is ready.
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+}
 
 const HOME_URL = 'https://muse.ai/';
 const RELEASES_URL = 'https://github.com/nordicnode/muse-linux/releases';
@@ -56,6 +63,32 @@ function isInternal(url) {
 
 let mainWindow = null;
 let tray = null;
+let isQuitting = false;
+let showingOffline = false;
+let lastGoodURL = HOME_URL;
+
+// ---------------------------------------------------------------------
+// Settings: currently just the close-to-tray preference, persisted as
+// JSON in userData.
+// ---------------------------------------------------------------------
+function settingsPath() {
+  return path.join(app.getPath('userData'), 'settings.json');
+}
+function loadSettings() {
+  try {
+    return { closeToTray: true, ...JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) };
+  } catch {
+    return { closeToTray: true };
+  }
+}
+const settings = loadSettings();
+function saveSettings() {
+  try {
+    fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2));
+  } catch {
+    /* best effort */
+  }
+}
 
 // ---------------------------------------------------------------------
 // Window state: remember size, position and maximised flag across runs.
@@ -83,6 +116,31 @@ function saveWindowState() {
   } catch {
     /* best effort */
   }
+}
+
+// If the saved position no longer intersects any connected display
+// (monitor unplugged, docking change), re-centre on the primary
+// display instead of restoring the window somewhere unreachable.
+function clampBoundsToDisplays(state) {
+  if (!Number.isFinite(state.x) || !Number.isFinite(state.y)) return state;
+  const rect = { x: state.x, y: state.y, width: state.width, height: state.height };
+  const visible = screen.getAllDisplays().some((d) => {
+    const a = d.workArea;
+    const overlapW = Math.min(rect.x + rect.width, a.x + a.width) - Math.max(rect.x, a.x);
+    const overlapH = Math.min(rect.y + rect.height, a.y + a.height) - Math.max(rect.y, a.y);
+    return overlapW >= 100 && overlapH >= 60; // enough title bar to grab
+  });
+  if (visible) return state;
+  const wa = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(state.width, wa.width);
+  const height = Math.min(state.height, wa.height);
+  return {
+    ...state,
+    width,
+    height,
+    x: wa.x + Math.round((wa.width - width) / 2),
+    y: wa.y + Math.round((wa.height - height) / 2),
+  };
 }
 
 // ---------------------------------------------------------------------
@@ -188,7 +246,7 @@ ipcMain.on('find:stop', (event) => {
 });
 
 function createWindow() {
-  const state = loadWindowState();
+  const state = clampBoundsToDisplays(loadWindowState());
   const icon = nativeImage.createFromPath(path.join(__dirname, 'icon.png'));
   mainWindow = new BrowserWindow({
     width: state.width,
@@ -244,18 +302,47 @@ function createWindow() {
   mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
 
   // Downloads: ask where to save, then reveal the file (WKWebView
-  // download delegate equivalent).
-  mainWindow.webContents.session.on('will-download', (event, item) => {
-    const savePath = dialog.showSaveDialogSync(mainWindow, {
-      defaultPath: path.join(app.getPath('downloads'), item.getFilename()),
-    });
-    if (!savePath) {
-      item.cancel();
-      return;
+  // download delegate equivalent). The dialog is async: the item is
+  // paused while it is open so the app does not freeze.
+  mainWindow.webContents.session.on('will-download', (_event, item) => {
+    item.pause();
+    dialog
+      .showSaveDialog(mainWindow, {
+        defaultPath: path.join(app.getPath('downloads'), item.getFilename()),
+      })
+      .then(({ canceled, filePath }) => {
+        if (canceled || !filePath) {
+          item.cancel();
+          return;
+        }
+        item.setSavePath(filePath);
+        item.once('done', (_e, state) => {
+          if (state === 'completed') shell.showItemInFolder(filePath);
+        });
+        item.resume();
+      })
+      .catch(() => item.cancel());
+  });
+
+  // Offline handling: a network failure on the main frame swaps in
+  // a small local page with a retry button (and auto-retry when the
+  // connection comes back), instead of Chromium's raw error page.
+  const wc = mainWindow.webContents;
+  wc.on('did-finish-load', () => {
+    const url = wc.getURL();
+    if (url.startsWith('https://')) {
+      showingOffline = false;
+      lastGoodURL = url;
     }
-    item.setSavePath(savePath);
-    item.once('done', (_e, state) => {
-      if (state === 'completed') shell.showItemInFolder(savePath);
+  });
+  wc.on('did-fail-load', (_e, errorCode, _desc, validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3 /* aborted */ || showingOffline) return;
+    if (!validatedURL.startsWith('http')) return;
+    showingOffline = true;
+    wc.loadFile(path.join(__dirname, 'offline.html'), {
+      query: { retry: lastGoodURL },
+    }).catch(() => {
+      showingOffline = false;
     });
   });
 
@@ -266,7 +353,15 @@ function createWindow() {
   };
   mainWindow.on('resize', queueSave);
   mainWindow.on('move', queueSave);
-  mainWindow.on('close', saveWindowState);
+  mainWindow.on('close', (event) => {
+    saveWindowState();
+    // Close-to-tray: hiding instead of closing keeps the page (and
+    // the conversation you had open) exactly where you left it.
+    if (!isQuitting && settings.closeToTray && tray) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -294,6 +389,76 @@ function createWindow() {
   return mainWindow;
 }
 
+// ---------------------------------------------------------------------
+// Auto-update: electron-updater against GitHub Releases. Only active
+// in electron-builder builds (they carry an app-update.yml); the
+// packager zip and dev runs fall back to opening the Releases page.
+// ---------------------------------------------------------------------
+let autoUpdaterRef = null;
+let manualUpdateCheck = false;
+function checkForUpdates(manual) {
+  const updateConfig = path.join(process.resourcesPath || '', 'app-update.yml');
+  if (!app.isPackaged || !fs.existsSync(updateConfig)) {
+    if (manual) shell.openExternal(RELEASES_URL);
+    return;
+  }
+  try {
+    if (!autoUpdaterRef) {
+      const { autoUpdater } = require('electron-updater');
+      autoUpdater.autoDownload = false;
+      autoUpdater.on('update-available', (info) => {
+        dialog
+          .showMessageBox(mainWindow, {
+            type: 'info',
+            message: `Muse for Linux ${info.version} is available.`,
+            detail: 'Download it now? The app restarts to install.',
+            buttons: ['Download', 'Later'],
+            defaultId: 0,
+            cancelId: 1,
+          })
+          .then(({ response }) => {
+            if (response === 0) autoUpdater.downloadUpdate();
+          });
+      });
+      autoUpdater.on('update-not-available', () => {
+        if (manualUpdateCheck) {
+          dialog.showMessageBox(mainWindow, {
+            type: 'info',
+            message: 'You are up to date.',
+          });
+        }
+        manualUpdateCheck = false;
+      });
+      autoUpdater.on('update-downloaded', () => {
+        dialog
+          .showMessageBox(mainWindow, {
+            type: 'info',
+            message: 'Update downloaded.',
+            buttons: ['Restart now', 'Later'],
+            defaultId: 0,
+            cancelId: 1,
+          })
+          .then(({ response }) => {
+            if (response === 0) autoUpdater.quitAndInstall();
+          });
+      });
+      autoUpdater.on('error', () => {
+        if (manualUpdateCheck) shell.openExternal(RELEASES_URL);
+        manualUpdateCheck = false;
+      });
+      autoUpdaterRef = autoUpdater;
+    }
+    manualUpdateCheck = manual;
+    autoUpdaterRef.checkForUpdates().catch(() => {
+      if (manual) shell.openExternal(RELEASES_URL);
+      manualUpdateCheck = false;
+    });
+  } catch {
+    if (manual) shell.openExternal(RELEASES_URL);
+    manualUpdateCheck = false;
+  }
+}
+
 function buildMenu() {
   const template = [
     {
@@ -302,7 +467,16 @@ function buildMenu() {
         { role: 'about' },
         {
           label: 'Check for Updates...',
-          click: () => shell.openExternal(RELEASES_URL),
+          click: () => checkForUpdates(true),
+        },
+        {
+          label: 'Keep in system tray when closed',
+          type: 'checkbox',
+          checked: settings.closeToTray,
+          click: (menuItem) => {
+            settings.closeToTray = menuItem.checked;
+            saveSettings();
+          },
         },
         { type: 'separator' },
         {
@@ -474,10 +648,16 @@ if (!gotLock) {
     buildMenu();
     createWindow();
     buildTray();
+    // Quiet background update check (packaged builds only).
+    setTimeout(() => checkForUpdates(false), 8000);
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+  });
+
+  app.on('before-quit', () => {
+    isQuitting = true;
   });
 
   app.on('open-url', (event, url) => {
@@ -486,8 +666,9 @@ if (!gotLock) {
   });
 
   app.on('window-all-closed', () => {
-    // Keep the tray alive like a desktop app; Quit is explicit.
+    // With close-to-tray on, the window hides instead of closing, so
+    // this rarely fires. With it off, closing the last window quits.
     // If there is no tray (unsupported desktop), quit normally.
-    if (!tray) app.quit();
+    if (!tray || !settings.closeToTray) app.quit();
   });
 }

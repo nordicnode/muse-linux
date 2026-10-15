@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.1.0 - 2026-10-15
+
+Everyday UX:
+- Offline page: if muse.ai fails to load (network down, DNS,
+  proxy), you now get a friendly "Can't reach Muse" page with a
+  Retry button and automatic retry when the connection returns,
+  instead of Chromium's raw error page
+- Window position is clamped to a connected display on restore, so
+  unplugging a monitor can no longer strand the window off-screen
+- Close-to-tray is now genuine (the window hides, keeping your
+  place in the conversation) and can be turned off in the Muse
+  menu ("Keep in system tray when closed"); with it off, closing
+  the window quits the app
+- Download save dialog is async, so it no longer freezes the app
+  while open
+
+Packaging and updates:
+- AppImage builds (x64 and arm64): one file, make it executable
+  and run it. Plus .deb packages (x64 and arm64)
+- Real auto-update for AppImage and .deb installs via
+  electron-updater against GitHub Releases: a quiet background
+  check on launch, and "Check for Updates..." actually checks now.
+  The zip build keeps the manual flow and opens Releases
+- Wayland: native window instead of XWayland where available
+  (`--ozone-platform-hint=auto` in the app and desktop entries)
+
+Repo:
+- Release notes now contain only the tagged version's changelog
+  section; CI smoke workflow (syntax check + package build) added
+
 ## 1.0.1 - 2026-10-15
 
 - Fix noisy startup when running the unpacked binary without
