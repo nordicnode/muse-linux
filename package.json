@@ -3,7 +3,7 @@
   "description": "Unofficial Linux desktop app for Muse (muse.ai). An Electron shell modelled on the macOS Muse 7.0 app: persistent login, tray, downloads, deep links, find-in-page.",
   "devDependencies": {
     "@electron/packager": "^18.0.0",
-    "electron": "^33.0.0",
+    "electron": "^44.7.2",
     "electron-builder": "^25.1.8"
   },
   "homepage": "https://github.com/nordicnode/muse-linux",
@@ -28,9 +28,9 @@
     "start": "electron .",
     "dist": "electron-builder --linux AppImage deb --publish never"
   },
-  "version": "1.1.0",
+  "version": "1.2.0",
   "dependencies": {
-    "electron-updater": "^6.3.9"
+    "electron-updater": "^6.8.9"
   },
   "build": {
     "appId": "io.github.nordicnode.muse-linux",

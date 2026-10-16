@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.2.0 - 2026-10-15
+
+- Electron updated from 33 to 44 (current Chromium and security
+  fixes; Electron 33 was end-of-life). Verified: dev run, offline
+  flow, zip package and AppImage build all re-tested
+- Bug fix: reopening the window no longer stacks duplicate
+  download handlers (one download could pop the save dialog
+  several times after a close/reopen cycle)
+- Bug fix: pressing Retry on the offline page while still offline
+  now returns to the friendly offline page instead of Chromium's
+  error page
+- Bug fix: desktops without a working system tray no longer risk
+  a startup crash; the app runs without a tray there
+- Bug fix: deep-link registration now also recognises the
+  electron-builder desktop file (muse-linux.desktop)
+- Popup windows (sign-in consent, payment, connector auth) now
+  get the same navigation guard and right-click menu as the main
+  window
+- Zoom level is remembered between launches
+- Ctrl+W closes the window (respects the tray setting)
+- Update dialogs no longer fail if the window is parked in the
+  tray when an update check lands
+- README rewritten to be user-facing; build notes moved to
+  BUILDING.md; stale committed SHA256SUMS removed (it is a
+  per-release artifact)
+
 ## 1.1.0 - 2026-10-15
 
 Everyday UX:

@@ -7,3 +7,4 @@ dist-packager/
 *.log
 .DS_Store
 window-state.json
+SHA256SUMS

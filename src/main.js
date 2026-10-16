@@ -65,7 +65,9 @@ let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 let showingOffline = false;
+let onOfflinePage = false;
 let lastGoodURL = HOME_URL;
+let downloadsWired = false;
 
 // ---------------------------------------------------------------------
 // Settings: currently just the close-to-tray preference, persisted as
@@ -109,9 +111,15 @@ function saveWindowState() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   try {
     const bounds = mainWindow.getBounds();
+    let zoomFactor;
+    try {
+      zoomFactor = mainWindow.webContents.getZoomFactor();
+    } catch {
+      zoomFactor = undefined;
+    }
     fs.writeFileSync(
       windowStatePath(),
-      JSON.stringify({ ...bounds, isMaximized: mainWindow.isMaximized() }),
+      JSON.stringify({ ...bounds, isMaximized: mainWindow.isMaximized(), zoomFactor }),
     );
   } catch {
     /* best effort */
@@ -298,31 +306,53 @@ function createWindow() {
     shell.openExternal(url);
     return { action: 'deny' };
   });
+  // Child windows (auth consent screens, payment popups, connector
+  // OAuth) get the same treatment as the main window: navigation
+  // guard, context menu, no unguarded popups of their own.
+  mainWindow.webContents.on('did-create-window', (childWindow) => {
+    installContextMenu(childWindow);
+    childWindow.webContents.on('will-navigate', guardNavigation);
+    childWindow.webContents.setWindowOpenHandler(({ url }) => {
+      if (isInternal(url)) return { action: 'allow' };
+      shell.openExternal(url);
+      return { action: 'deny' };
+    });
+    childWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  });
   // No embedded webviews, ever.
   mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
 
   // Downloads: ask where to save, then reveal the file (WKWebView
   // download delegate equivalent). The dialog is async: the item is
   // paused while it is open so the app does not freeze.
-  mainWindow.webContents.session.on('will-download', (_event, item) => {
-    item.pause();
-    dialog
-      .showSaveDialog(mainWindow, {
+  //
+  // Registered ONCE per session, not per window: the session is a
+  // singleton, so wiring this inside createWindow stacked a new
+  // handler (and a second save dialog) on every window recreation.
+  if (!downloadsWired) {
+    downloadsWired = true;
+    mainWindow.webContents.session.on('will-download', (_event, item) => {
+      item.pause();
+      const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+      const options = {
         defaultPath: path.join(app.getPath('downloads'), item.getFilename()),
-      })
-      .then(({ canceled, filePath }) => {
-        if (canceled || !filePath) {
-          item.cancel();
-          return;
-        }
-        item.setSavePath(filePath);
-        item.once('done', (_e, state) => {
-          if (state === 'completed') shell.showItemInFolder(filePath);
-        });
-        item.resume();
-      })
-      .catch(() => item.cancel());
-  });
+      };
+      const ask = parent ? dialog.showSaveDialog(parent, options) : dialog.showSaveDialog(options);
+      ask
+        .then(({ canceled, filePath }) => {
+          if (canceled || !filePath) {
+            item.cancel();
+            return;
+          }
+          item.setSavePath(filePath);
+          item.once('done', (_e, state) => {
+            if (state === 'completed') shell.showItemInFolder(filePath);
+          });
+          item.resume();
+        })
+        .catch(() => item.cancel());
+    });
+  }
 
   // Offline handling: a network failure on the main frame swaps in
   // a small local page with a retry button (and auto-retry when the
@@ -332,13 +362,21 @@ function createWindow() {
     const url = wc.getURL();
     if (url.startsWith('https://')) {
       showingOffline = false;
+      onOfflinePage = false;
       lastGoodURL = url;
+    } else if (url.includes('offline.html')) {
+      // The offline page is fully up; a failed Retry from here must
+      // be allowed to bring it back (see did-fail-load).
+      showingOffline = false;
+      onOfflinePage = true;
     }
   });
   wc.on('did-fail-load', (_e, errorCode, _desc, validatedURL, isMainFrame) => {
-    if (!isMainFrame || errorCode === -3 /* aborted */ || showingOffline) return;
+    if (!isMainFrame || errorCode === -3 /* aborted */) return;
     if (!validatedURL.startsWith('http')) return;
+    if (showingOffline && !onOfflinePage) return; // offline load already in flight
     showingOffline = true;
+    onOfflinePage = false;
     wc.loadFile(path.join(__dirname, 'offline.html'), {
       query: { retry: lastGoodURL },
     }).catch(() => {
@@ -385,6 +423,16 @@ function createWindow() {
     });
   }
 
+  if (Number.isFinite(state.zoomFactor) && state.zoomFactor > 0) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      try {
+        mainWindow.webContents.setZoomFactor(state.zoomFactor);
+      } catch {
+        /* page gone */
+      }
+    });
+  }
+
   mainWindow.loadURL(HOME_URL);
   return mainWindow;
 }
@@ -396,6 +444,12 @@ function createWindow() {
 // ---------------------------------------------------------------------
 let autoUpdaterRef = null;
 let manualUpdateCheck = false;
+// Dialogs must not be parented to a hidden/destroyed window (the
+// window may be parked in the tray when an update check lands).
+function showDialog(options) {
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  return parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options);
+}
 function checkForUpdates(manual) {
   const updateConfig = path.join(process.resourcesPath || '', 'app-update.yml');
   if (!app.isPackaged || !fs.existsSync(updateConfig)) {
@@ -407,8 +461,7 @@ function checkForUpdates(manual) {
       const { autoUpdater } = require('electron-updater');
       autoUpdater.autoDownload = false;
       autoUpdater.on('update-available', (info) => {
-        dialog
-          .showMessageBox(mainWindow, {
+        showDialog({
             type: 'info',
             message: `Muse for Linux ${info.version} is available.`,
             detail: 'Download it now? The app restarts to install.',
@@ -422,7 +475,7 @@ function checkForUpdates(manual) {
       });
       autoUpdater.on('update-not-available', () => {
         if (manualUpdateCheck) {
-          dialog.showMessageBox(mainWindow, {
+          showDialog({
             type: 'info',
             message: 'You are up to date.',
           });
@@ -430,8 +483,7 @@ function checkForUpdates(manual) {
         manualUpdateCheck = false;
       });
       autoUpdater.on('update-downloaded', () => {
-        dialog
-          .showMessageBox(mainWindow, {
+        showDialog({
             type: 'info',
             message: 'Update downloaded.',
             buttons: ['Restart now', 'Later'],
@@ -485,6 +537,7 @@ function buildMenu() {
           click: () => mainWindow && mainWindow.loadURL(HOME_URL),
         },
         { type: 'separator' },
+        { role: 'close', label: 'Close Window', accelerator: 'Ctrl+W' },
         { role: 'quit' },
       ],
     },
@@ -533,7 +586,15 @@ function buildTray() {
   const icon = nativeImage
     .createFromPath(path.join(__dirname, 'icon.png'))
     .resize({ width: 22, height: 22 });
-  tray = new Tray(icon);
+  try {
+    tray = new Tray(icon);
+  } catch (err) {
+    // Desktops without a working tray/status area: carry on without
+    // one. window-all-closed already quits the app when tray is null.
+    console.error('Tray unavailable, continuing without it:', err.message);
+    tray = null;
+    return;
+  }
   tray.setToolTip('Muse');
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -572,7 +633,9 @@ function hasDesktopEntry() {
   if (process.env.XDG_DATA_DIRS) dirs.push(...process.env.XDG_DATA_DIRS.split(':').filter(Boolean));
   dirs.push('/usr/local/share', '/usr/share');
   return dirs.some((d) =>
-    ['muse.desktop', 'Muse.desktop'].some((f) => fs.existsSync(path.join(d, 'applications', f))),
+    ['muse.desktop', 'Muse.desktop', 'muse-linux.desktop'].some((f) =>
+      fs.existsSync(path.join(d, 'applications', f)),
+    ),
   );
 }
 if (process.platform !== 'linux' || hasDesktopEntry()) {

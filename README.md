@@ -1,136 +1,130 @@
-# Muse for Linux (unofficial)
+# Muse for Linux
 
-Meta ships Muse for Mac, iOS, Android and the web, but not Linux.
-This is an unofficial Linux desktop app: an Electron shell for
-[muse.ai](https://muse.ai), modelled on the official macOS app
-(Muse 7.0), built and verified against the real thing.
+Muse for your Linux desktop. Meta makes Muse for Mac, iOS,
+Android and the web, but not Linux. This app fills the gap:
+sign in once and use Muse like any other desktop app.
 
-> **Disclaimer:** Unofficial project by
-> [nordicnode](https://github.com/nordicnode). Not affiliated with,
-> endorsed by, or sponsored by Meta. "Muse" and the app icon are
-> Meta's; the Muse service is Meta's and subject to Meta's terms
-> and regional availability. This repository contains only the
-> shell code (MIT licensed, see [LICENSE](LICENSE)).
+> Unofficial app by [nordicnode](https://github.com/nordicnode).
+> Not affiliated with or endorsed by Meta. Muse is Meta's
+> service, so you need a Muse account and Meta's terms and
+> regional availability apply.
 
-![Muse for Linux loading muse.ai](screenshot-verified.png)
+![Muse for Linux](screenshot-verified.png)
 
-## Install
+## Download and install
 
-From [Releases](https://github.com/nordicnode/muse-linux/releases),
-pick whichever format you like (x64 and arm64 where applicable):
+Grab a file from
+[Releases](https://github.com/nordicnode/muse-linux/releases)
+and pick whichever suits you:
 
-**AppImage** (recommended, no install):
+**AppImage (easiest, nothing to install)**
 
 ```sh
 chmod +x Muse-*.AppImage
 ./Muse-*.AppImage
 ```
 
-**Debian/Ubuntu package:**
+**Debian / Ubuntu package**
 
 ```sh
-sudo apt install ./muse-linux_*_amd64.deb   # or *_arm64.deb
+sudo apt install ./muse-linux_*_amd64.deb
 ```
 
-**Zip folder:**
+On ARM machines (Raspberry Pi and friends), use the `arm64`
+files instead.
+
+**Zip**
 
 ```sh
 unzip Muse-linux-x64.zip
 ./Muse-linux-x64/Muse
 ```
 
-For the zip, `./install.sh` optionally adds a menu entry, icon and
-deep-link registration (and `./uninstall.sh` removes them).
+Want the zip version in your app menu with an icon? Run
+`./install.sh` from the project folder. `./uninstall.sh` removes
+it again (your chats and settings are kept; see Uninstall below).
 
-AppImage and .deb installs **auto-update** from GitHub Releases
-(quiet background check on launch; *Muse -> Check for Updates...*
-checks immediately). The zip build is manual: that menu item opens
-the Releases page.
+Every release includes a `SHA256SUMS` file if you want to verify
+your download.
 
-Verify downloads against `SHA256SUMS` attached to each release.
+## What you get
 
-## Features
+- **Sign in once.** Your login is remembered between restarts.
+- **Everything in your Muse account works**: chats, files,
+  connectors, the lot. It all lives in your account, not in the
+  app, so it is the same Muse you get on the web or a Mac.
+- **Lives in your system tray.** Closing the window tucks Muse
+  away in the tray with your conversation right where you left
+  it. Prefer closing to mean quit? Turn off "Keep in system tray
+  when closed" in the Muse menu.
+- **Find in page** with Ctrl+F, a proper right-click menu with
+  spellcheck, and zoom that remembers your setting.
+- **Downloads** ask where to save, then show you the file.
+- **Friendly offline screen.** If your connection drops, you get
+  a retry screen instead of a browser error page.
+- **Links behave.** Muse and Meta pages stay in the app;
+  everything else opens in your normal browser.
 
-- Persistent login: sign in once, the session survives restarts
-- Everything account/server-side works as on Mac and web: chats,
-  the agent VM, files, connectors. The VM is bound to your
-  account, not to any specific client
-- System tray (closing the window keeps Muse in the tray, with
-  your place in the conversation intact; can be switched off)
-- Right-click context menu with spellcheck suggestions
-- Find in page (Ctrl+F) with match counts
-- Friendly offline page with retry when muse.ai cannot be reached
-- Window size and position remembered between launches, and kept
-  on a connected display if your monitor setup changes
-- Downloads ask where to save, then reveal the file
-- Muse/Meta hosts (login, accounts, auth) stay in-app; external
-  links open in your default browser
-- Mic/camera/geolocation/notifications only granted to Muse/Meta
-  origins; everything else denied by default
-- Deep links matching the Mac app: `hatch://`, `endo-window://`
-  (plus `muse://`)
+## Updating
 
-### Known differences from the macOS app
+- **AppImage and .deb:** the app checks for updates quietly when
+  it starts and tells you when a new version is ready. You can
+  also check yourself any time: **Muse menu -> Check for
+  Updates...**
+- **Zip:** no auto-update. **Check for Updates...** opens the
+  Releases page; download the new zip and unpack it over the old
+  folder.
 
-- No Apple-service integrations (Contacts, Calendar, Reminders,
-  Photos, Speech Recognition, Keychain): macOS-only
-- No native-bridge features for the device you are sitting at
-  (host computer use, host local connectors, 1Password hookup)
-- No Sparkle-style update feed from Meta; this port updates
-  itself from its own GitHub Releases (AppImage/.deb), see Install
+## Day-to-day tips
 
-## Build from source
+- Reopen Muse from the tray icon, or launch it again: it never
+  opens twice.
+- Keyboard: Ctrl+F find, Ctrl+W close window, Alt+Left/Right
+  back and forward, Alt+Home back to the Muse home page.
+- Allow the microphone when asked if you want voice features;
+  Muse only asks on Muse's own pages.
 
-```sh
-npm install
-npm start           # run in dev mode
-npm run package     # zip layout via electron-packager (dist-packager/)
-npm run dist        # AppImage + .deb via electron-builder (dist/)
-```
+## Troubleshooting
 
-## Privacy
+**It opens a browser tab when I sign in or click a link.**
+That is on purpose for non-Muse sites. Sign-in itself (Meta,
+Facebook, Accounts Center) stays inside the app.
 
-This shell adds no telemetry, analytics or third-party requests of
-its own. It loads muse.ai and the Muse/Meta hosts needed for
-login, and stores your session locally in Electron's per-app
-profile (`persist:muse` partition) on your machine. Traffic goes
-to Meta's services exactly as it does in a browser.
+**Double-clicking the AppImage does nothing.**
+Make sure it is executable (`chmod +x Muse-*.AppImage`), or run
+it from a terminal once to see any error message.
 
-## How this came about: could the Mac app be "converted"?
+**The window opened off-screen after unplugging a monitor.**
+Restart the app. It checks on startup and moves the window back
+onto a screen you actually have.
 
-No, and the analysis is half the fun. Extracting the official
-`Muse-7.0.dmg` (49,905,200 bytes, SHA-256
-`3bef29eafc4797c4e12ba99ca26c43a020511ec4d36985579fba9f5fff7f6fb5`,
-built 2026-10-07) shows a **native macOS app**, not a
-cross-platform bundle:
+**Terminal shows warnings when I run it from the command line.**
+Fontconfig and video-codec warnings are common on Linux and
+harmless. Launching from your app menu avoids the noise.
 
-- One 51 MB universal Mach-O binary (x86_64 + arm64),
-  bundle id `com.meta.endo` (internal names "Endo" / "Hatch"),
-  Xcode 27, macOS 27 SDK, minimum macOS 14.0
-- Written in **SwiftUI / AppKit**, hosting **WKWebView**; the only
-  bundled framework is Sparkle (the macOS auto-updater)
-- No Electron, no Tauri, no `app.asar` to repackage. Mach-O +
-  SwiftUI cannot run or be recompiled on Linux, and Wine/Darling
-  do not run SwiftUI GUI apps
+**Still stuck?**
+Open an issue:
+https://github.com/nordicnode/muse-linux/issues
 
-What the Mac app does is wrap web technology in that native
-shell: a bundled 44.7 MB single-file React app
-(`Contents/Resources/hatch/index.html`), plus `https://muse.ai`
-in a web view with injected native bridges
-(`window.webkit.messageHandlers.*` / `window.endoHatch.*`), backed
-by `api.muse.ai`, `api.meta.ai`, `hatch-api.meta.ai` and
-`auth.meta.com`.
+## Your data
 
-"Hatch" is the desktop client's internal codename (and its
-mascot). The agent "VM" (in its hardened form, "CVM") is a
-per-account remote virtual machine behind a gateway: the binary's
-own strings describe a pinned VM that is suspended when idle and
-woken on connect, with its own home directory you upload files to
-via `files.upload`. The CVM form adds PIN lock, a recovery
-secret, attestation gates and an encrypted Noise-protocol channel
-("Vesta" auth). Because that VM is account-bound, this Linux shell
-reaches it exactly like the Mac app does once you sign in.
+This app adds no tracking, ads or analytics of its own. It loads
+muse.ai, stores your login and settings on your own machine
+(under `~/.config/Muse`), and your conversations live in your
+Muse account with Meta, exactly as in a browser.
 
-(The reverse-engineering pass was done with REA, Ghidra and
-Hopper; REA's graph evidence strips string literals, so endpoints
-and constants were confirmed by mining the bundles directly.)
+## Uninstall
+
+- **.deb:** `sudo apt remove muse-linux`
+- **AppImage or zip:** just delete the file or folder. If you
+  ran `install.sh`, run `./uninstall.sh` first.
+- To remove your login and settings too, delete `~/.config/Muse`.
+
+## License
+
+The app code is MIT licensed (see [LICENSE](LICENSE)). Muse
+itself, its name and icon belong to Meta.
+
+---
+
+Building from source? See [BUILDING.md](BUILDING.md).
