@@ -18,7 +18,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Guard: tag must match package.json version
+      - name: Guard - tag must match package.json version
         run: |
           PKG="v$(node -p "require('./package.json').version")"
           if [ "$PKG" != "${GITHUB_REF_NAME}" ]; then
