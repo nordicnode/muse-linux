@@ -88,6 +88,11 @@ window.addEventListener('DOMContentLoaded', () => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         show();
+      } else if (e.key === 'Escape' && host.style.display !== 'none') {
+        // Escape closes the bar even when focus is back in the page
+        // (the input's own handler only covers focus-in-bar).
+        e.preventDefault();
+        hide();
       }
     },
     true,

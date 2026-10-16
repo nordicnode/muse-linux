@@ -33,7 +33,8 @@ jobs:
         run: |
           npm run package
           cd dist-packager
-          zip -qr ../Muse-linux-x64.zip Muse-linux-x64
+          cp ../install.sh ../uninstall.sh .
+          zip -qr ../Muse-linux-x64.zip Muse-linux-x64 install.sh uninstall.sh
           cd ..
       - name: Build AppImage + deb (electron-builder, x64 + arm64)
         run: npx electron-builder --linux AppImage deb --x64 --arm64 --publish never
@@ -43,7 +44,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # If a previous run half-created the release, refresh its
+          # assets instead of failing.
           gh release create "${GITHUB_REF_NAME}" \
             Muse-linux-x64.zip dist/*.AppImage dist/*.deb dist/latest-linux*.yml SHA256SUMS \
             --title "Muse for Linux ${GITHUB_REF_NAME}" \
-            --notes-file release-notes.md
+            --notes-file release-notes.md \
+          || gh release upload "${GITHUB_REF_NAME}" \
+            Muse-linux-x64.zip dist/*.AppImage dist/*.deb dist/latest-linux*.yml SHA256SUMS \
+            --clobber

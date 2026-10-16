@@ -6,6 +6,10 @@ cd "$(dirname "$0")"
 DEST="$HOME/.local/share/muse-linux"
 mkdir -p "$DEST" "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/256x256/apps"
 
+TMP=""
+cleanup() { [ -n "$TMP" ] && rm -rf "$TMP"; }
+trap cleanup EXIT
+
 if [ -d "Muse-linux-x64" ]; then
   SRC="Muse-linux-x64"
 elif [ -f "Muse-linux-x64.zip" ]; then
@@ -20,7 +24,18 @@ fi
 rm -rf "$DEST"
 cp -r "$SRC" "$DEST"
 chmod +x "$DEST/Muse"
-cp "src/icon.png" "$HOME/.local/share/icons/hicolor/256x256/apps/muse.png"
+
+# Icon: from the repo layout when present, else from inside the
+# packaged app (the release zip has no src/ folder).
+ICON_SRC=""
+if [ -f "src/icon.png" ]; then
+  ICON_SRC="src/icon.png"
+elif [ -f "$SRC/resources/app/src/icon.png" ]; then
+  ICON_SRC="$SRC/resources/app/src/icon.png"
+fi
+if [ -n "$ICON_SRC" ]; then
+  cp "$ICON_SRC" "$HOME/.local/share/icons/hicolor/256x256/apps/muse.png"
+fi
 
 cat > "$HOME/.local/share/applications/muse.desktop" <<EOF
 [Desktop Entry]

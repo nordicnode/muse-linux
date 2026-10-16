@@ -51,6 +51,10 @@ const INTERNAL_HOSTS = new Set([
   'www.facebook.com',
   'facebook.com',
   'agent.meta.ai',
+  // Google sign-in: without this, "Continue with Google" bounces
+  // to the system browser and completes there, leaving the app
+  // signed out.
+  'accounts.google.com',
 ]);
 
 function isInternal(url) {
@@ -221,13 +225,6 @@ function installContextMenu(win) {
         click: () => showFindBar(win),
       },
       { role: 'reload' },
-      {
-        label: 'Inspect Element',
-        click: () => {
-          win.webContents.inspectElement(params.x, params.y);
-          if (win.webContents.isDevToolsOpened()) win.webContents.focus();
-        },
-      },
     );
     Menu.buildFromTemplate(items).popup({ window: win });
   });
@@ -240,6 +237,17 @@ function installContextMenu(win) {
 // ---------------------------------------------------------------------
 function showFindBar(win) {
   win.webContents.send('find:show');
+}
+// Forward match counts to the window they belong to (main window
+// and popups alike).
+function wireFindResults(win) {
+  win.webContents.on('found-in-page', (_e, result) => {
+    if (win.isDestroyed()) return;
+    win.webContents.send('find:result', {
+      activeMatchOrdinal: result.activeMatchOrdinal,
+      matches: result.matches,
+    });
+  });
 }
 ipcMain.on('find:search', (event, { text, forward }) => {
   const wc = event.sender;
@@ -279,13 +287,7 @@ function createWindow() {
   if (state.isMaximized) mainWindow.maximize();
 
   installContextMenu(mainWindow);
-
-  mainWindow.webContents.on('found-in-page', (_e, result) => {
-    mainWindow.webContents.send('find:result', {
-      activeMatchOrdinal: result.activeMatchOrdinal,
-      matches: result.matches,
-    });
-  });
+  wireFindResults(mainWindow);
 
   // Keep navigation inside the app for Muse/Meta hosts only.
   // Note: server redirects (will-redirect) are deliberately NOT
@@ -311,6 +313,7 @@ function createWindow() {
   // guard, context menu, no unguarded popups of their own.
   mainWindow.webContents.on('did-create-window', (childWindow) => {
     installContextMenu(childWindow);
+    wireFindResults(childWindow);
     childWindow.webContents.on('will-navigate', guardNavigation);
     childWindow.webContents.setWindowOpenHandler(({ url }) => {
       if (isInternal(url)) return { action: 'allow' };
@@ -407,8 +410,9 @@ function createWindow() {
 
   // Test hook: MUSE_LINUX_SCREENSHOT=/path.png captures the loaded
   // page a few seconds after load and quits. Used to verify builds
-  // headlessly; harmless in normal use.
-  if (process.env.MUSE_LINUX_SCREENSHOT) {
+  // headlessly. Dev runs only: a packaged build ignores it, so a
+  // stray environment variable can never affect real users.
+  if (process.env.MUSE_LINUX_SCREENSHOT && !app.isPackaged) {
     mainWindow.webContents.once('did-finish-load', () => {
       setTimeout(async () => {
         try {
@@ -559,7 +563,6 @@ function buildMenu() {
         { role: 'resetZoom' },
         { type: 'separator' },
         { role: 'togglefullscreen' },
-        { role: 'toggleDevTools' },
       ],
     },
     {
@@ -648,6 +651,10 @@ if (process.platform !== 'linux' || hasDesktopEntry()) {
   }
 }
 
+function findDeepLink(argv) {
+  return argv.find((a) => /^(hatch|endo-window|muse):\/\//.test(a));
+}
+
 function handleDeepLink(url) {
   // hatch:// and friends are just doors into the web app; anything
   // with a muse.ai path is honoured, the rest lands on home.
@@ -671,7 +678,7 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', (_event, argv) => {
-    const link = argv.find((a) => /^(hatch|endo-window|muse):\/\//.test(a));
+    const link = findDeepLink(argv);
     if (link) handleDeepLink(link);
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -711,6 +718,13 @@ if (!gotLock) {
     buildMenu();
     createWindow();
     buildTray();
+    // Cold-start deep link: when the app was launched BY a link
+    // (desktop file %U), the URL arrives in our own argv. Nothing
+    // else delivers it on Linux (open-url is macOS-only, and
+    // second-instance only fires when already running) - before
+    // 1.3.0 it was silently dropped.
+    const coldLink = findDeepLink(process.argv);
+    if (coldLink) handleDeepLink(coldLink);
     // Quiet background update check (packaged builds only).
     setTimeout(() => checkForUpdates(false), 8000);
 

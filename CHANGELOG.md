@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.3.0 - 2026-10-15
+
+Second audit pass (all findings from the 1.2.0 review fixed):
+
+- Bug fix: deep links (hatch://, endo-window://, muse://) now
+  work when the app is NOT already running. The link arrives in
+  the app's command line on a cold start and was silently dropped
+  (verified: handled once with the link, ignored without)
+- Bug fix: the release zip now actually contains install.sh and
+  uninstall.sh at the top level, as the README describes.
+  install.sh also finds the icon inside the packaged app when
+  there is no source tree (verified end-to-end from the zip under
+  a scratch home directory: binary, icon, desktop entry and all
+  three scheme registrations land correctly)
+- Google sign-in stays in the app: accounts.google.com is now an
+  allowed in-app host, so "Continue with Google" no longer
+  completes in your browser while the app stays signed out
+- uninstall.sh now points at the real profile folder
+  (~/.config/Muse)
+- install.sh cleans up its temporary extraction folder
+- Find in page: match counts work in popup windows too, and
+  Escape closes the find bar even when focus is in the page
+- Release builds no longer expose DevTools (Inspect Element and
+  the View menu toggle removed), and the headless screenshot
+  test hook is ignored by packaged builds
+- The zip no longer bundles repo internals (.github, docs,
+  scripts) inside the app folder
+- Release workflow now refreshes assets instead of failing if
+  re-run after a half-created release
+- Dependabot enabled for npm and GitHub Actions updates
+
+Still open (needs a real desktop, cannot be verified from CI):
+auto-update from an installed copy. The feed and wiring are
+verified; the 1.2.0 -> 1.3.0 update prompt on a real 1.2.0
+AppImage/.deb install is the test.
+
 ## 1.2.0 - 2026-10-15
 
 - Electron updated from 33 to 44 (current Chromium and security

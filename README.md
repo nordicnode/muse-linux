@@ -40,9 +40,10 @@ unzip Muse-linux-x64.zip
 ./Muse-linux-x64/Muse
 ```
 
-Want the zip version in your app menu with an icon? Run
-`./install.sh` from the project folder. `./uninstall.sh` removes
-it again (your chats and settings are kept; see Uninstall below).
+Want the zip version in your app menu with an icon? The zip
+includes `install.sh`: unpack, then run `./install.sh`.
+`./uninstall.sh` removes it again (your chats and settings are
+kept; see Uninstall below).
 
 Every release includes a `SHA256SUMS` file if you want to verify
 your download.
