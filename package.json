@@ -51,8 +51,10 @@
       "synopsis": "Unofficial Linux desktop app for Muse",
       "description": "An Electron shell for muse.ai: persistent login, system tray, find-in-page, downloads and deep links. Unofficial; not affiliated with Meta.",
       "desktop": {
-        "StartupWMClass": "muse-linux",
-        "MimeType": "x-scheme-handler/hatch;x-scheme-handler/endo-window;x-scheme-handler/muse;"
+        "entry": {
+          "StartupWMClass": "muse-linux",
+          "MimeType": "x-scheme-handler/hatch;x-scheme-handler/endo-window;x-scheme-handler/muse;"
+        }
       }
     },
     "publish": {
