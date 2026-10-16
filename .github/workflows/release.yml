@@ -18,6 +18,13 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: Guard: tag must match package.json version
+        run: |
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "$PKG" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version $PKG. Bump the version before tagging." >&2
+            exit 1
+          fi
       - name: Extract this version's changelog section
         run: |
           python3 - <<'EOF'

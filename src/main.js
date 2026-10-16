@@ -65,6 +65,19 @@ function isInternal(url) {
   }
 }
 
+// Only these schemes may be handed to the OS from page-controlled
+// URLs (link clicks, navigations, popups). Anything else (file:,
+// app-specific protocol handlers a page could invoke with attacker
+// arguments) is blocked rather than launched.
+const EXTERNAL_SCHEMES = new Set(['http:', 'https:', 'mailto:', 'tel:']);
+function openExternalSafe(url) {
+  try {
+    if (EXTERNAL_SCHEMES.has(new URL(url).protocol)) shell.openExternal(url);
+  } catch {
+    /* unparseable URL: do nothing */
+  }
+}
+
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
@@ -114,17 +127,17 @@ function loadWindowState() {
 function saveWindowState() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   try {
-    const bounds = mainWindow.getBounds();
-    let zoomFactor;
-    try {
-      zoomFactor = mainWindow.webContents.getZoomFactor();
-    } catch {
-      zoomFactor = undefined;
-    }
-    fs.writeFileSync(
-      windowStatePath(),
-      JSON.stringify({ ...bounds, isMaximized: mainWindow.isMaximized(), zoomFactor }),
-    );
+    const isMaximized = mainWindow.isMaximized();
+    // Save the NORMAL bounds, not the maximized ones: otherwise
+    // unmaximizing after a restart keeps the full-screen size
+    // instead of returning to the user's windowed size.
+    const bounds = isMaximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
+    // Note: no zoom persistence here on purpose. Chromium already
+    // remembers zoom per site in the profile (verified 2026-10-15:
+    // set 1.5, restart, still 1.5 with no help from us). A previous
+    // hand-rolled version force-applied the last page's factor to
+    // every page and fought the built-in behaviour.
+    fs.writeFileSync(windowStatePath(), JSON.stringify({ ...bounds, isMaximized }));
   } catch {
     /* best effort */
   }
@@ -166,7 +179,7 @@ function installContextMenu(win) {
       items.push(
         {
           label: 'Open Link in Browser',
-          click: () => shell.openExternal(params.linkURL),
+          click: () => openExternalSafe(params.linkURL),
         },
         {
           label: 'Copy Link Address',
@@ -299,13 +312,13 @@ function createWindow() {
   const guardNavigation = (event, url) => {
     if (!isInternal(url) && !url.startsWith('about:')) {
       event.preventDefault();
-      shell.openExternal(url);
+      openExternalSafe(url);
     }
   };
   mainWindow.webContents.on('will-navigate', guardNavigation);
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isInternal(url)) return { action: 'allow' };
-    shell.openExternal(url);
+    openExternalSafe(url);
     return { action: 'deny' };
   });
   // Child windows (auth consent screens, payment popups, connector
@@ -317,7 +330,7 @@ function createWindow() {
     childWindow.webContents.on('will-navigate', guardNavigation);
     childWindow.webContents.setWindowOpenHandler(({ url }) => {
       if (isInternal(url)) return { action: 'allow' };
-      shell.openExternal(url);
+      openExternalSafe(url);
       return { action: 'deny' };
     });
     childWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
@@ -387,6 +400,54 @@ function createWindow() {
     });
   });
 
+  // Crash recovery: a renderer/GPU crash must not leave a dead
+  // white window in the tray forever. Reload automatically; if it
+  // keeps dying, stop looping and ask the user.
+  let crashTimes = [];
+  wc.on('render-process-gone', (_e, details) => {
+    if (details.reason === 'clean-exit' || wc.isDestroyed()) return;
+    const now = Date.now();
+    crashTimes = crashTimes.filter((t) => now - t < 60000);
+    crashTimes.push(now);
+    if (crashTimes.length >= 3) {
+      showDialog({
+        type: 'error',
+        message: 'Muse keeps crashing.',
+        detail: 'The page renderer died several times in a row. Reload once more, or quit and restart the app.',
+        buttons: ['Reload', 'Quit'],
+        defaultId: 0,
+        cancelId: 1,
+      }).then(({ response }) => {
+        if (response === 0) {
+          crashTimes = [];
+          if (!wc.isDestroyed()) wc.reload();
+        } else {
+          app.quit();
+        }
+      });
+      return;
+    }
+    wc.reload();
+  });
+  let unresponsivePromptOpen = false;
+  wc.on('unresponsive', () => {
+    if (unresponsivePromptOpen || wc.isDestroyed()) return;
+    unresponsivePromptOpen = true;
+    showDialog({
+      type: 'warning',
+      message: 'Muse is not responding.',
+      buttons: ['Keep waiting', 'Reload page'],
+      defaultId: 0,
+      cancelId: 0,
+    }).then(({ response }) => {
+      unresponsivePromptOpen = false;
+      if (response === 1 && !wc.isDestroyed()) wc.reload();
+    });
+  });
+  wc.on('responsive', () => {
+    unresponsivePromptOpen = false;
+  });
+
   let saveTimer = null;
   const queueSave = () => {
     clearTimeout(saveTimer);
@@ -427,16 +488,6 @@ function createWindow() {
     });
   }
 
-  if (Number.isFinite(state.zoomFactor) && state.zoomFactor > 0) {
-    mainWindow.webContents.once('did-finish-load', () => {
-      try {
-        mainWindow.webContents.setZoomFactor(state.zoomFactor);
-      } catch {
-        /* page gone */
-      }
-    });
-  }
-
   mainWindow.loadURL(HOME_URL);
   return mainWindow;
 }
@@ -448,6 +499,7 @@ function createWindow() {
 // ---------------------------------------------------------------------
 let autoUpdaterRef = null;
 let manualUpdateCheck = false;
+let updateAvailableVersion = null;
 // Dialogs must not be parented to a hidden/destroyed window (the
 // window may be parked in the tray when an update check lands).
 function showDialog(options) {
@@ -465,6 +517,10 @@ function checkForUpdates(manual) {
       const { autoUpdater } = require('electron-updater');
       autoUpdater.autoDownload = false;
       autoUpdater.on('update-available', (info) => {
+        // Keep the offer visible in the menu even if the user
+        // dismisses this prompt (it used to vanish until restart).
+        updateAvailableVersion = info.version;
+        buildMenu();
         showDialog({
             type: 'info',
             message: `Muse for Linux ${info.version} is available.`,
@@ -478,6 +534,10 @@ function checkForUpdates(manual) {
           });
       });
       autoUpdater.on('update-not-available', () => {
+        if (updateAvailableVersion) {
+          updateAvailableVersion = null;
+          buildMenu();
+        }
         if (manualUpdateCheck) {
           showDialog({
             type: 'info',
@@ -522,8 +582,16 @@ function buildMenu() {
       submenu: [
         { role: 'about' },
         {
-          label: 'Check for Updates...',
-          click: () => checkForUpdates(true),
+          label: updateAvailableVersion
+            ? `Download Update (${updateAvailableVersion})...`
+            : 'Check for Updates...',
+          click: () => {
+            if (updateAvailableVersion && autoUpdaterRef) {
+              Promise.resolve(autoUpdaterRef.downloadUpdate()).catch(() => checkForUpdates(true));
+            } else {
+              checkForUpdates(true);
+            }
+          },
         },
         {
           label: 'Keep in system tray when closed',
@@ -542,7 +610,7 @@ function buildMenu() {
         },
         { type: 'separator' },
         { role: 'close', label: 'Close Window', accelerator: 'Ctrl+W' },
-        { role: 'quit' },
+        { role: 'quit', accelerator: 'Ctrl+Q' },
       ],
     },
     { role: 'editMenu' },
@@ -553,6 +621,29 @@ function buildMenu() {
           label: 'Find in Page...',
           accelerator: 'Ctrl+F',
           click: () => mainWindow && showFindBar(mainWindow),
+        },
+        {
+          label: 'Print...',
+          accelerator: 'Ctrl+P',
+          click: () => mainWindow && mainWindow.webContents.print(),
+        },
+        {
+          label: 'Save as PDF...',
+          click: async () => {
+            if (!mainWindow) return;
+            try {
+              const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+                defaultPath: 'muse.pdf',
+                filters: [{ name: 'PDF', extensions: ['pdf'] }],
+              });
+              if (canceled || !filePath) return;
+              const data = await mainWindow.webContents.printToPDF({});
+              fs.writeFileSync(filePath, data);
+              shell.showItemInFolder(filePath);
+            } catch {
+              /* user cancelled a dialog or the page went away */
+            }
+          },
         },
         { type: 'separator' },
         { role: 'reload' },
@@ -700,20 +791,28 @@ if (!gotLock) {
 
     // Permissions: mic/camera/geolocation/notifications only for
     // Muse/Meta origins (the Mac app's usage-description prompts,
-    // translated). Everything else is denied by default.
+    // translated). Everything else is denied by default. The check
+    // uses the REQUESTING origin, not the top page URL, so a
+    // third-party iframe embedded in a Muse page cannot inherit
+    // Muse's grant.
     const museSession = session.fromPartition('persist:muse');
     const allowedPermissions = ['media', 'geolocation', 'notifications', 'clipboard-sanitized-write'];
-    const permissionOk = (webContents, permission) => {
+    const permissionOk = (webContents, permission, requestingUrl) => {
       let originOk = false;
+      const target = requestingUrl || (webContents ? webContents.getURL() : '');
       try {
-        originOk = isInternal(webContents.getURL());
+        originOk = isInternal(target);
       } catch {
         originOk = false;
       }
       return originOk && allowedPermissions.includes(permission);
     };
-    museSession.setPermissionRequestHandler((wc, permission, callback) => callback(permissionOk(wc, permission)));
-    museSession.setPermissionCheckHandler((wc, permission) => (wc ? permissionOk(wc, permission) : false));
+    museSession.setPermissionRequestHandler((wc, permission, callback, details) =>
+      callback(permissionOk(wc, permission, details && details.requestingUrl)),
+    );
+    museSession.setPermissionCheckHandler((wc, permission, requestingOrigin) =>
+      permissionOk(wc, permission, requestingOrigin),
+    );
 
     buildMenu();
     createWindow();

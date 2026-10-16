@@ -60,6 +60,7 @@ your download.
   when closed" in the Muse menu.
 - **Find in page** with Ctrl+F, a proper right-click menu with
   spellcheck, and zoom that remembers your setting.
+- **Print or save as PDF** (Ctrl+P) from the View menu.
 - **Downloads** ask where to save, then show you the file.
 - **Friendly offline screen.** If your connection drops, you get
   a retry screen instead of a browser error page.
@@ -80,8 +81,9 @@ your download.
 
 - Reopen Muse from the tray icon, or launch it again: it never
   opens twice.
-- Keyboard: Ctrl+F find, Ctrl+W close window, Alt+Left/Right
-  back and forward, Alt+Home back to the Muse home page.
+- Keyboard: Ctrl+F find, Ctrl+P print, Ctrl+W close window,
+  Ctrl+Q quit, Alt+Left/Right back and forward, Alt+Home back to
+  the Muse home page.
 - Allow the microphone when asked if you want voice features;
   Muse only asks on Muse's own pages.
 

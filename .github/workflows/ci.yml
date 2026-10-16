@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly: keeps the electron-builder smoke job (below) honest
+    # even when nobody dispatches it by hand.
+    - cron: '0 6 * * 1'
 
 jobs:
   smoke:
@@ -19,3 +24,19 @@ jobs:
         run: node --check src/main.js && node --check src/preload.js
       - name: Package smoke build (x64 zip layout)
         run: npm run package && ls dist-packager/Muse-linux-x64/Muse
+
+  # electron-builder is otherwise only exercised at release time,
+  # which is how a broken builder config could ship unnoticed until
+  # a tag. This job runs it on demand and weekly.
+  dist-smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Builder smoke build (AppImage + deb, x64)
+        run: npx electron-builder --linux AppImage deb --x64 --publish never && ls dist/*.AppImage dist/*.deb

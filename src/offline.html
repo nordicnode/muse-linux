@@ -35,6 +35,9 @@
   function go() { location.href = retry; }
   document.getElementById('retry').addEventListener('click', go);
   window.addEventListener('online', go);
+  // Some connections recover without an 'online' event (VPN and
+  // proxy flaps): poll gently and retry when the network is back.
+  setInterval(function () { if (navigator.onLine) go(); }, 20000);
 </script>
 </body>
 </html>

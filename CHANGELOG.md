@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.4.0 - 2026-10-15
+
+Third audit pass (all findings from the 1.3.0 review fixed):
+
+- Crash recovery: if the page renderer dies (the classic
+  Electron GPU crash), the app now reloads automatically instead
+  of leaving a dead white window in your tray. If it crashes
+  repeatedly it stops looping and asks. An "unresponsive" prompt
+  offers the same choice for a hung page. Verified by forcibly
+  crashing the renderer in a test run and watching the page load
+  again
+- Bug fix: unmaximizing after a restart no longer keeps the
+  full-screen size; the window returns to its previous normal
+  size (state now saves normal bounds)
+- Removed the hand-rolled zoom persistence added in 1.2.0: a
+  probe proved Chromium already remembers zoom per site, and the
+  manual version could override a per-site zoom you set on
+  purpose. Zoom behaves natively now
+- Bug fix: AppImage/.deb windows now match their launcher icon
+  (probe: windows report WM_CLASS muse-linux, but the desktop
+  file claimed StartupWMClass "Muse", breaking dock association
+  on GNOME/KDE)
+- Hardening: links handed to the OS are restricted to
+  http/https/mailto/tel; permission checks (mic, camera,
+  location, notifications) now use the requesting frame's origin
+  instead of the top page, so embedded third-party frames cannot
+  inherit Muse's grants
+- Print (Ctrl+P) and Save as PDF in the View menu; Ctrl+Q quits
+- The offline page also retries on a timer, not only on the
+  browser's "online" event (VPN/proxy recoveries often skip it)
+- If you dismiss an update prompt, the Muse menu keeps a
+  "Download Update (x.y.z)..." entry instead of the offer
+  vanishing until restart
+- Release safety: the release workflow now fails fast if the
+  git tag and package.json version disagree; CI gained a
+  builder (AppImage/.deb) smoke job on demand and weekly, so
+  builder breakage is caught before a release tag, not during
+  one
+
 ## 1.3.0 - 2026-10-15
 
 Second audit pass (all findings from the 1.2.0 review fixed):
