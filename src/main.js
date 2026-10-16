@@ -347,26 +347,41 @@ function createWindow() {
   // handler (and a second save dialog) on every window recreation.
   if (!downloadsWired) {
     downloadsWired = true;
+    // Save dialogs run one at a time through this chain: without
+    // it, two downloads starting together stack dialogs on top of
+    // each other.
+    let dialogChain = Promise.resolve();
     mainWindow.webContents.session.on('will-download', (_event, item) => {
       item.pause();
-      const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-      const options = {
-        defaultPath: path.join(app.getPath('downloads'), item.getFilename()),
-      };
-      const ask = parent ? dialog.showSaveDialog(parent, options) : dialog.showSaveDialog(options);
-      ask
-        .then(({ canceled, filePath }) => {
-          if (canceled || !filePath) {
-            item.cancel();
-            return;
-          }
-          item.setSavePath(filePath);
-          item.once('done', (_e, state) => {
-            if (state === 'completed') shell.showItemInFolder(filePath);
-          });
-          item.resume();
-        })
-        .catch(() => item.cancel());
+      dialogChain = dialogChain.then(
+        () =>
+          new Promise((resolve) => {
+            const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+            const options = {
+              defaultPath: path.join(app.getPath('downloads'), item.getFilename()),
+            };
+            const ask = parent
+              ? dialog.showSaveDialog(parent, options)
+              : dialog.showSaveDialog(options);
+            ask
+              .then(({ canceled, filePath }) => {
+                if (canceled || !filePath) {
+                  item.cancel();
+                } else {
+                  item.setSavePath(filePath);
+                  item.once('done', (_e, state) => {
+                    if (state === 'completed') shell.showItemInFolder(filePath);
+                  });
+                  item.resume();
+                }
+                resolve();
+              })
+              .catch(() => {
+                item.cancel();
+                resolve();
+              });
+          }),
+      );
     });
   }
 
@@ -676,6 +691,13 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+function showMainWindow() {
+  if (!mainWindow) createWindow();
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 function buildTray() {
   const icon = nativeImage
     .createFromPath(path.join(__dirname, 'icon.png'))
@@ -694,11 +716,7 @@ function buildTray() {
     Menu.buildFromTemplate([
       {
         label: 'Show Muse',
-        click: () => {
-          if (!mainWindow) createWindow();
-          mainWindow.show();
-          mainWindow.focus();
-        },
+        click: () => showMainWindow(),
       },
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() },
@@ -706,7 +724,11 @@ function buildTray() {
   );
   tray.on('click', () => {
     if (!mainWindow) return createWindow();
-    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+    // A minimized window reports as "visible" in Electron; treat
+    // it as hidden for the toggle, or the click hides it outright
+    // instead of bringing it back.
+    if (mainWindow.isVisible() && !mainWindow.isMinimized()) mainWindow.hide();
+    else showMainWindow();
   });
 }
 
@@ -746,7 +768,16 @@ function findDeepLink(argv) {
   return argv.find((a) => /^(hatch|endo-window|muse):\/\//.test(a));
 }
 
+let pendingDeepLink = null;
 function handleDeepLink(url) {
+  // A link can arrive before the app is ready (second-instance
+  // fires the moment a second launch happens, even while the
+  // first is still starting). Creating a window pre-ready throws,
+  // so queue the link and deliver it once startup completes.
+  if (!app.isReady()) {
+    pendingDeepLink = url;
+    return;
+  }
   // hatch:// and friends are just doors into the web app; anything
   // with a muse.ai path is honoured, the rest lands on home.
   try {
@@ -824,8 +855,14 @@ if (!gotLock) {
     // 1.3.0 it was silently dropped.
     const coldLink = findDeepLink(process.argv);
     if (coldLink) handleDeepLink(coldLink);
-    // Quiet background update check (packaged builds only).
-    setTimeout(() => checkForUpdates(false), 8000);
+    if (pendingDeepLink) {
+      const queued = pendingDeepLink;
+      pendingDeepLink = null;
+      handleDeepLink(queued);
+    }
+    // Quiet background update check (packaged builds only). Half a
+    // minute in, so the prompt never lands on top of sign-in.
+    setTimeout(() => checkForUpdates(false), 30000);
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

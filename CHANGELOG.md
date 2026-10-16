@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.4.1 - 2026-10-15
+
+Fourth audit pass (all findings from the 1.4.0 review fixed):
+
+- Bug fix: a deep link arriving while the app was still starting
+  (second-instance fires before the ready event) could hit a
+  window creation too early and fail; links are now queued and
+  delivered as soon as startup completes
+- Bug fix: tray icon clicks and the tray's "Show Muse" could
+  hide a minimized window instead of restoring it (a minimized
+  window counts as visible in Electron); both now restore first
+- The background update check now runs 30 seconds after launch
+  instead of 8, so its prompt cannot land on top of sign-in
+- Simultaneous downloads no longer stack save dialogs; they
+  queue and ask one at a time
+- AppImage/.deb packages now include the MIT LICENSE file (it
+  shipped in the zip but was missing from builder formats)
+- uninstall.sh scrubs the scheme-handler entries it no longer
+  needs from ~/.config/mimeapps.list
+- CI and release builds pinned to ubuntu-24.04 instead of the
+  floating ubuntu-latest (which GitHub migrates to Ubuntu 26 on
+  2026-10-19)
+
+Verified: dev-run smoke test (cold deep link handled, app
+renders), uninstall mimeapps scrub exercised against a sample
+file (only the app's three entries removed), workflows parse.
+
 ## 1.4.0 - 2026-10-15
 
 Third audit pass (all findings from the 1.3.0 review fixed):
